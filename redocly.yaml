@@ -1,0 +1,9 @@
+# Lint rules for the contract. `recommended` plus the two that matter most for
+# an API two teams implement independently: every operation documents its
+# failures, and every operation has an id the generated clients can name.
+extends:
+  - recommended
+rules:
+  operation-4xx-response: error
+  operation-operationId: error
+  no-server-example.com: error

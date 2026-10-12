@@ -1,0 +1,4 @@
+{
+  "code": "IDEMPOTENCY_CONFLICT",
+  "message": "idempotencyKey BANK-B2:6f1c2a4e was already used with a different body"
+}

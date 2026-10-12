@@ -1,0 +1,5 @@
+{
+  "code": "INVALID_REQUEST",
+  "message": "amount.value must be a decimal string with two decimals",
+  "field": "amount.value"
+}

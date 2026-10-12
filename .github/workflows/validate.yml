@@ -1,0 +1,35 @@
+name: Validar contrato
+
+# El contrato lo implementan dos equipos por separado: lo único que los mantiene
+# de acuerdo es que el archivo sea válido y que los ejemplos digan lo mismo que el
+# esquema. Esto corre en cada cambio, antes de que nadie lo apruebe.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: OpenAPI, ejemplos e integridad
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint del OpenAPI (Redocly)
+        run: npm run lint
+
+      - name: Ejemplos válidos pasan, inválidos se rechazan
+        run: npm run examples
+
+      - name: El contrato del curso no fue modificado
+        run: npm run course-base

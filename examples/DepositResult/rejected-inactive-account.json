@@ -1,0 +1,7 @@
+{
+  "interbankTransferId": "6f1c2a4e-8b3d-4f7a-9c21-0d5e7b9a1c34",
+  "idempotencyKey": "BANK-B2:6f1c2a4e-8b3d-4f7a-9c21-0d5e7b9a1c34",
+  "status": "REJECTED",
+  "reason": "ACCOUNT_INACTIVE",
+  "processedAt": "2026-10-15T20:32:09.020Z"
+}

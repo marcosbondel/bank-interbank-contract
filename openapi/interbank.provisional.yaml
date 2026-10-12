@@ -1,0 +1,403 @@
+openapi: 3.1.0
+info:
+  title: Interbank deposits — provisional contract
+  version: 0.1.0
+  summary: What one bank exposes so another can send it a deposit, and how the result comes back.
+  description: |
+    **PROVISIONAL.** The course publishes the base contract when the project is
+    assigned (enunciado Fase 3, §4.1) and groups must not modify it. Until it
+    arrives this file lets both banks build and test against the same shapes.
+    When the course contract lands in `openapi/course-base/`, **it** is the
+    contract; this file is then either deleted or reduced to a diff that the
+    course explicitly allows. See `README.md`.
+
+    The flow is asynchronous (§4.2): the sending bank's Payment Service calls
+    `POST /deposits` on the receiving bank's API Gateway and gets `202 Accepted`;
+    the receiving bank later calls the sender back on
+    `POST /deposits/{interbankTransferId}/result` with `ACCEPTED` or `REJECTED`.
+    A business refusal (account inactive, limit exceeded…) is **never** an HTTP
+    error: it is a `REJECTED` result delivered by the callback. HTTP errors are
+    reserved for requests that cannot be understood or are not authorised.
+
+    Every request carries a W3C `traceparent` header, so one deposit is one
+    trace across both banks (§4.1, *Observabilidad requerida*).
+  license:
+    name: MIT
+    identifier: MIT
+
+servers:
+  - url: https://{gatewayHost}/interbank/v1
+    description: Each bank's API Gateway. The host per environment is in AGREEMENT.md.
+    variables:
+      gatewayHost:
+        default: gateway.example.invalid
+
+security:
+  - apiKey: []
+
+tags:
+  - name: deposits
+    description: Called by the **sending** bank on the **receiving** bank.
+  - name: callbacks
+    description: Called by the **receiving** bank on the **sending** bank.
+  - name: operations
+    description: Connectivity checks for the joint test window.
+
+paths:
+  /deposits:
+    post:
+      tags: [deposits]
+      operationId: receiveDeposit
+      summary: Ask this bank to credit one of its accounts.
+      description: |
+        Accepted for processing, not yet decided. The result arrives later on the
+        sender's callback.
+
+        **Idempotent by `idempotencyKey`.** Repeating a request with the same key
+        and the same body returns the same `202` and the same
+        `interbankTransferId`, and never credits twice. The same key with a
+        **different** body is `409`.
+      parameters:
+        - $ref: '#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DepositRequest'
+      responses:
+        '202':
+          description: Accepted for processing. Also the answer to a replayed request.
+          headers:
+            Idempotent-Replayed:
+              description: '`true` when this answer replays an earlier request with the same key.'
+              schema:
+                type: boolean
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DepositAcknowledgement'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /deposits/{interbankTransferId}:
+    get:
+      tags: [deposits]
+      operationId: getDeposit
+      summary: The current state of a deposit this bank received.
+      description: |
+        For recovery and reconciliation: a sender whose callback never arrived
+        can ask before declaring `TIMEOUT`.
+      parameters:
+        - $ref: '#/components/parameters/InterbankTransferId'
+        - $ref: '#/components/parameters/Traceparent'
+      responses:
+        '200':
+          description: The deposit as the receiving bank sees it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DepositStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /deposits/{interbankTransferId}/result:
+    post:
+      tags: [callbacks]
+      operationId: receiveDepositResult
+      summary: The receiving bank tells the sender how a deposit ended.
+      description: |
+        Exposed by the **sending** bank. `ACCEPTED` confirms the debit;
+        `REJECTED` makes the sender compensate and release the amount.
+
+        **Idempotent.** The receiver may deliver the same result more than once
+        (it retries until it gets a `2xx`); the sender confirms or compensates
+        only once. A result that contradicts one already recorded is `409`.
+      parameters:
+        - $ref: '#/components/parameters/InterbankTransferId'
+        - $ref: '#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DepositResult'
+      responses:
+        '204':
+          description: Recorded (or already recorded with the same outcome).
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/ResultConflict'
+
+  /ping:
+    get:
+      tags: [operations]
+      operationId: ping
+      summary: Authenticated connectivity check.
+      description: Proves the URL, the TLS and the API key before a real deposit is sent.
+      parameters:
+        - $ref: '#/components/parameters/Traceparent'
+      responses:
+        '200':
+          description: Reachable and authorised.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pong'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+      description: |
+        Issued by the bank that **exposes** the endpoint to the bank that calls
+        it — two keys in total, one per direction. Exchanged out of band, never
+        in this repository; stored in each bank's Kubernetes Secret.
+
+  parameters:
+    Traceparent:
+      name: traceparent
+      in: header
+      required: true
+      description: W3C Trace Context (https://www.w3.org/TR/trace-context/).
+      schema:
+        type: string
+        pattern: '^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$'
+      example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+    InterbankTransferId:
+      name: interbankTransferId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/InterbankTransferId'
+
+  responses:
+    BadRequest:
+      description: The request does not match this contract.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Missing or wrong `X-Api-Key`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: No deposit with that `interbankTransferId`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    IdempotencyConflict:
+      description: The `idempotencyKey` was already used with a different body.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ResultConflict:
+      description: A different result was already recorded for this deposit.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unavailable:
+      description: Temporarily unable to accept deposits. Retry with the same `idempotencyKey`.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    InterbankTransferId:
+      description: Generated by the **sending** bank; unique across both banks.
+      type: string
+      format: uuid
+
+    BankCode:
+      description: A participating bank, as agreed in AGREEMENT.md.
+      type: string
+      pattern: '^[A-Z0-9][A-Z0-9-]{1,19}$'
+
+    Money:
+      type: object
+      additionalProperties: false
+      required: [value, currency]
+      properties:
+        value:
+          description: |
+            Decimal string with exactly two decimals, never a JSON number: a
+            float cannot represent most amounts in centavos exactly.
+          type: string
+          pattern: '^(0|[1-9][0-9]{0,11})\.[0-9]{2}$'
+        currency:
+          type: string
+          enum: [GTQ]
+
+    DepositRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - interbankTransferId
+        - idempotencyKey
+        - originBank
+        - destinationBank
+        - destinationAccount
+        - amount
+        - timestamp
+      properties:
+        interbankTransferId:
+          $ref: '#/components/schemas/InterbankTransferId'
+        idempotencyKey:
+          description: Chosen by the sender; the same on every retry of this deposit.
+          type: string
+          minLength: 8
+          maxLength: 128
+          pattern: '^[A-Za-z0-9._:-]+$'
+        originBank:
+          $ref: '#/components/schemas/BankCode'
+        destinationBank:
+          $ref: '#/components/schemas/BankCode'
+        originAccount:
+          description: Optional. Informational only — the receiver never validates it.
+          type: string
+          maxLength: 64
+        destinationAccount:
+          description: The receiving bank's account identifier.
+          type: string
+          minLength: 1
+          maxLength: 64
+        amount:
+          $ref: '#/components/schemas/Money'
+        description:
+          type: string
+          maxLength: 140
+        timestamp:
+          description: When the sender created the deposit. RFC 3339 with an offset.
+          type: string
+          format: date-time
+
+    DepositAcknowledgement:
+      type: object
+      additionalProperties: false
+      required: [interbankTransferId, status, receivedAt]
+      properties:
+        interbankTransferId:
+          $ref: '#/components/schemas/InterbankTransferId'
+        status:
+          description: Always `PENDING` on acceptance; the decision comes by callback.
+          type: string
+          enum: [PENDING]
+        receivedAt:
+          type: string
+          format: date-time
+
+    RejectionReason:
+      type: string
+      enum:
+        - ACCOUNT_NOT_FOUND
+        - ACCOUNT_INACTIVE
+        - AMOUNT_EXCEEDS_LIMIT
+        - UNSUPPORTED_CURRENCY
+        - WRONG_DESTINATION_BANK
+        - INTERNAL_ERROR
+
+    DepositResult:
+      type: object
+      additionalProperties: false
+      required: [interbankTransferId, idempotencyKey, status, processedAt]
+      properties:
+        interbankTransferId:
+          $ref: '#/components/schemas/InterbankTransferId'
+        idempotencyKey:
+          description: The one the sender used, echoed back.
+          type: string
+        status:
+          type: string
+          enum: [ACCEPTED, REJECTED]
+        reason:
+          $ref: '#/components/schemas/RejectionReason'
+        processedAt:
+          type: string
+          format: date-time
+      allOf:
+        - if:
+            properties:
+              status:
+                const: REJECTED
+          then:
+            properties:
+              reason:
+                $ref: '#/components/schemas/RejectionReason'
+            required: [reason]
+
+    DepositStatus:
+      type: object
+      additionalProperties: false
+      required: [interbankTransferId, status, updatedAt]
+      properties:
+        interbankTransferId:
+          $ref: '#/components/schemas/InterbankTransferId'
+        status:
+          description: The receiving bank's view. `TIMEOUT` and `REVERSED` exist only on the sender's side.
+          type: string
+          enum: [PENDING, ACCEPTED, REJECTED]
+        reason:
+          $ref: '#/components/schemas/RejectionReason'
+        updatedAt:
+          type: string
+          format: date-time
+
+    Pong:
+      type: object
+      additionalProperties: false
+      required: [bank, time]
+      properties:
+        bank:
+          $ref: '#/components/schemas/BankCode'
+        time:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - INVALID_REQUEST
+            - UNAUTHORIZED
+            - NOT_FOUND
+            - IDEMPOTENCY_CONFLICT
+            - RESULT_CONFLICT
+            - UNAVAILABLE
+        message:
+          type: string
+        field:
+          description: The offending field, for `INVALID_REQUEST`.
+          type: string
