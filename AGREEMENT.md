@@ -104,8 +104,15 @@ INTERBANK_PARTNER_BANK_CODE   # su BankCode
 ```
 
 Una petición sin llave o con una llave incorrecta recibe `401` y no revela si el
-recurso existe. Rotar la llave **no rueda los pods por sí sola** en nuestro
-despliegue, así que hace falta un `kubectl rollout restart` después.
+recurso existe.
+
+**Rotar la llave rueda nuestros pods sola**, desde el 2026-10-16. Hasta ese día no lo
+hacía —un pod lee un `Secret` una vez al arrancar, y nuestros `Deployment` no
+anotaban su hash— así que una rotación dejaba los procesos con la llave anterior y el
+despliegue salía verde. El síntoma era el peor posible: un `401` *correcto* sobre un
+valor equivocado. Ahora los siete llevan el hash del `Secret` en su plantilla de pod,
+de modo que cambiar la llave reemplaza los pods; ya no hace falta
+`kubectl rollout restart`.
 
 ## 5. Tiempos
 
@@ -243,12 +250,22 @@ Un acuerdo que oculta esto no es un acuerdo, es una promesa.
 | Banco | Qué | Estado |
 | --- | --- | --- |
 | `BANK02` | **HTTPS.** La entrada es un `LoadBalancer` de capa 4 sin terminación TLS (§3) | abierto |
-| `BANK02` | **El protocolo de `TIMEOUT`, del lado emisor.** Las siete operaciones están implementadas y el lado **receptor** está completo, incluido el rechazo por vencimiento. Lo que falta es lo que hacemos **nosotros** cuando el callback de la pareja no llega: hoy esperamos 30 s y compensamos, en vez de los 180 s seguidos de consulta, cancelación y el margen de 300 s | abierto |
+| `BANK02` | **El reverso saliente (`POST /reversals`) no es automático.** Si acreditáis un depósito y vuestro `ACCEPTED` nos llega *después* de que hayamos liberado la reserva, lo **detectamos** y lo registramos como incidente de nivel `ERROR`, pero pedir el reverso es hoy un paso humano | abierto |
 | Banco B | ⏳ | |
 
-**Qué significa el segundo para la pareja, sin rodeos.** Si recibís un depósito
-nuestro y vuestro callback tarda más de 30 segundos, es posible que nosotros ya
-hayamos devuelto el dinero al cliente mientras vosotros se lo acreditasteis al
-vuestro. Hasta que esté cerrado: **que vuestro callback salga pronto**, y si no sale,
-usad `GET /transfers/{id}` y `POST /transfers/{id}/cancel` —que sí están— para saber
-en qué quedó. La conciliación diaria es la red de seguridad.
+**Lo que esta tabla decía hasta el 2026-10-16, y ya no.** Decía que esperábamos 30 s
+y compensábamos, y avisaba a la pareja de que un callback lento podía hacernos
+devolver dinero que vosotros ya habíais acreditado. **Eso está cerrado.** El
+protocolo del contrato está implementado en sus cuatro primeros pasos: el plazo son
+los 180 s del contrato, al vencer **el monto sigue reservado**, consultamos
+`GET /transfers/{id}`, cancelamos con `POST /transfers/{id}/cancel` cuando da `404` o
+`PROCESSING`, y sólo liberamos con una respuesta vuestra o pasados `expiresAt + 300 s`
+— y en ese último caso alertamos, porque es la única rama en la que liberamos sin
+saber.
+
+**Qué significa la divergencia que queda, sin rodeos.** Ya no hay prisa por vuestro
+callback: tenéis los 180 s del contrato y, si no llegáis, preguntamos antes de
+decidir. Lo único que falta de nuestro lado es la reparación *automática* del caso
+raro — vosotros acreditáis, vuestro `ACCEPTED` llega tardísimo, y nosotros ya
+liberamos. Lo vemos y lo registramos; el `POST /reversals` lo lanza una persona. Si os
+pasa, escribidnos y lo resolvemos por §11.
