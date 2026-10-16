@@ -15,14 +15,41 @@ import addFormats from 'ajv-formats';
 import { parse } from 'yaml';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const contractPath = process.argv[2] ?? join(root, 'openapi/interbank.provisional.yaml');
+/*
+ * El contrato del curso, que es el que manda (enunciado §4.1: «los grupos no
+ * deben modificarlo»). Era el provisional hasta que llegó el oficial el
+ * 2026-10-16; el provisional se retiró para que nadie implemente el que no
+ * cuenta.
+ */
+const contractPath =
+  process.argv[2] ?? join(root, 'openapi/course-base/interbank-contract-v1.openapi.yaml');
 const examplesDir = join(root, 'examples');
 
 const contract = parse(readFileSync(contractPath, 'utf8'));
 const schemas = contract?.components?.schemas ?? {};
 
-// OpenAPI 3.1 schemas are JSON Schema 2020-12; only the $ref prefix differs.
-const defs = JSON.parse(JSON.stringify(schemas).replaceAll('#/components/schemas/', '#/$defs/'));
+/*
+ * El contrato del curso es OpenAPI **3.0.3**, no 3.1, así que sus esquemas no
+ * son JSON Schema 2020-12 exacto: traen `example`, que no es una palabra clave
+ * de JSON Schema y hace saltar el modo estricto de Ajv. Se quitan antes de
+ * validar — son documentación del contrato, no reglas — y lo que queda sí es
+ * 2020-12 salvo el prefijo de los `$ref`.
+ */
+const defs = sinAnotaciones(
+  JSON.parse(JSON.stringify(schemas).replaceAll('#/components/schemas/', '#/$defs/')),
+);
+
+/** Quita las anotaciones de OpenAPI que JSON Schema no conoce. */
+function sinAnotaciones(nodo) {
+  if (Array.isArray(nodo)) return nodo.map(sinAnotaciones);
+  if (nodo === null || typeof nodo !== 'object') return nodo;
+
+  return Object.fromEntries(
+    Object.entries(nodo)
+      .filter(([clave]) => clave !== 'example' && clave !== 'xml' && clave !== 'discriminator')
+      .map(([clave, valor]) => [clave, sinAnotaciones(valor)]),
+  );
+}
 
 const ajv = new Ajv2020({ allErrors: true, strict: true });
 addFormats(ajv);

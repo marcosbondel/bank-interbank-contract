@@ -1,9 +1,0 @@
-{
-  "interbankTransferId": "0b7e8d1c-2f3a-4b5c-8d9e-1a2b3c4d5e6f",
-  "idempotencyKey": "retry-safe-key-0001",
-  "originBank": "BANK-PAREJA",
-  "destinationBank": "BANK-B2",
-  "destinationAccount": "b0000000-0000-4000-8000-000000000004",
-  "amount": { "value": "0.01", "currency": "GTQ" },
-  "timestamp": "2026-10-15T20:32:08Z"
-}

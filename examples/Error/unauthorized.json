@@ -1,1 +1,5 @@
-{ "code": "UNAUTHORIZED", "message": "missing or invalid X-Api-Key" }
+{
+  "code": "UNAUTHORIZED",
+  "message": "API key ausente o invalida.",
+  "timestamp": "2026-10-20T15:00:00Z"
+}
