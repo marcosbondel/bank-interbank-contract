@@ -5,6 +5,36 @@ Cambios al contrato y al acuerdo. El formato sigue
 contrato siguen [SemVer](https://semver.org/lang/es/): un cambio que rompe a un
 cliente existente es una versión mayor.
 
+## [No publicado]
+
+Correcciones al **acuerdo**, no al contrato. Las dos decían algo que dejó de ser
+cierto el mismo 2026-10-16, y las dos habrían hecho al banco pareja diseñar contra
+una restricción que ya no existe — que es la peor forma de equivocarse en un
+acuerdo.
+
+### Corregido
+
+- **§13 — la divergencia del protocolo de `TIMEOUT` se reduce.** Decía que
+  esperábamos 30 s y compensábamos, y avisaba a la pareja de que un callback lento
+  podía hacernos devolver dinero que ellos ya habían acreditado. Los cuatro primeros
+  pasos del contrato están implementados: 180 s, el monto **sigue reservado** al
+  vencer, consulta, cancelación, y liberación sólo con respuesta o pasado el margen
+  de 300 s con alerta. Lo que queda abierto es sólo el `POST /reversals`
+  **automático**: el caso se detecta y se registra como incidente `ERROR`, y el
+  reverso lo pide una persona.
+- **§4 — rotar la API key ya rueda nuestros pods.** Decía que hacía falta un
+  `kubectl rollout restart` después. Era verdad: un pod lee un `Secret` una vez al
+  arrancar y nuestros `Deployment` no anotaban su hash, así que una rotación dejaba
+  los procesos con la llave anterior y el despliegue salía verde — con un `401`
+  *correcto* sobre un valor equivocado como único síntoma. Los siete llevan ya el
+  hash del `Secret`.
+
+### Pendiente del lado de `BANK02`
+
+- La **URL de producción** y las **dos cuentas de prueba** siguen marcadas ⏳: salen
+  de la IP que reserva Terraform y del entorno en la nube, que todavía no está en
+  pie. No son una negociación, son un valor que se publica aquí en cuanto exista.
+
 ## [1.0.0] — 2026-10-16
 
 El contrato del curso llegó, y **reemplaza al provisional**. El cambio es mayor en
