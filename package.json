@@ -1,19 +1,19 @@
 {
   "name": "bank-interbank-contract",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
-  "description": "The interbank deposit contract and integration agreement between two Bank USAC groups.",
+  "description": "The course interbank deposit contract and the integration agreement between two Bank USAC groups.",
   "license": "MIT",
   "type": "module",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
-    "lint": "redocly lint openapi/interbank.provisional.yaml",
+    "lint": "redocly lint openapi/course-base/interbank-contract-v1.openapi.yaml",
     "examples": "node scripts/validate-examples.mjs",
     "course-base": "node scripts/check-course-base.mjs",
-    "check": "npm run lint && npm run examples && npm run course-base",
-    "mock": "npx --yes @stoplight/prism-cli@5.16.0 mock openapi/interbank.provisional.yaml --port 4010"
+    "check": "npm run course-base && npm run lint && npm run examples",
+    "mock": "npx --yes @stoplight/prism-cli@5.16.0 mock openapi/course-base/interbank-contract-v1.openapi.yaml --port 4010"
   },
   "devDependencies": {
     "@redocly/cli": "2.62.1",

@@ -1,9 +1,30 @@
-# Lint rules for the contract. `recommended` plus the two that matter most for
-# an API two teams implement independently: every operation documents its
-# failures, and every operation has an id the generated clients can name.
+# Reglas de lint para el contrato.
+#
+# Hasta el 2026-10-16 el contrato que se lintaba era **nuestro** y estas tres
+# reglas eran `error`, que es lo correcto cuando se puede arreglar lo que
+# señalan. Desde que el archivo es el del curso, dos de ellas dejaron de poder
+# ser errores: el enunciado dice que **los grupos no deben modificarlo**, así
+# que una regla cuyo hallazgo no podemos atender no puede romper el CI — un CI
+# permanentemente rojo es un CI que alguien acaba borrando.
+#
+# Lo que señalan, y por qué el contrato del curso tiene razón en los dos casos:
+#
+#   operation-4xx-response → `GET /health` sólo declara `200` y `503`. No hay
+#     ningún `4xx` que documentar: no lleva autenticación (`security: []`) y no
+#     recibe parámetros, así que no existe una petición del cliente que pueda
+#     estar mal. La regla es buena y aquí no aplica.
+#
+#   info-license → el contrato no trae bloque de licencia. Es material de un
+#     curso, no un paquete publicado.
+#
+# `operation-operationId` sigue en `error` porque el contrato del curso **sí**
+# le da un `operationId` a sus siete operaciones, y perderlo rompería los
+# clientes que cada banco genera desde el archivo.
 extends:
   - recommended
 rules:
-  operation-4xx-response: error
   operation-operationId: error
   no-server-example.com: error
+  # Las dos que no podemos atender en un archivo que no es nuestro.
+  operation-4xx-response: warn
+  info-license: off

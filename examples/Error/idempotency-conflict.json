@@ -1,4 +1,5 @@
 {
   "code": "IDEMPOTENCY_CONFLICT",
-  "message": "idempotencyKey BANK-B2:6f1c2a4e was already used with a different body"
+  "message": "Ya existe una solicitud con ese id y otro contenido.",
+  "timestamp": "2026-10-20T15:00:00Z"
 }
